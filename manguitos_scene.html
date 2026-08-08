@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manguitos LIVE - Stream Scene</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { overflow: hidden; font-family: 'Segoe UI', Arial, sans-serif; }
+        canvas { display: block; }
+        
+        #overlay {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            pointer-events: none;
+            z-index: 10;
+        }
+        
+        #gift-alert {
+            position: fixed;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%) scale(0);
+            background: rgba(0,0,0,0.8);
+            border: 3px solid #ff6b35;
+            border-radius: 20px;
+            padding: 20px 40px;
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+            text-align: center;
+            opacity: 0;
+            transition: all 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+            z-index: 20;
+        }
+        
+        #gift-alert.show {
+            transform: translateX(-50%) scale(1);
+            opacity: 1;
+        }
+        
+        #gift-alert .gift-icon {
+            font-size: 48px;
+            display: block;
+            margin-bottom: 10px;
+        }
+        
+        #gift-alert .gift-name {
+            color: #ff6b35;
+            font-size: 28px;
+        }
+        
+        #gift-alert .gift-user {
+            color: #aaa;
+            font-size: 18px;
+            margin-top: 5px;
+        }
+        
+        #logo {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 15;
+            color: white;
+            font-size: 32px;
+            font-weight: bold;
+            text-shadow: 0 0 20px rgba(255,107,53,0.8);
+        }
+        
+        #logo span {
+            color: #ff6b35;
+        }
+        
+        #live-badge {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 15;
+            background: #ff0040;
+            color: white;
+            padding: 8px 20px;
+            border-radius: 8px;
+            font-weight: bold;
+            font-size: 18px;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        
+        #viewer-count {
+            position: fixed;
+            top: 60px;
+            right: 20px;
+            z-index: 15;
+            color: white;
+            font-size: 16px;
+            background: rgba(0,0,0,0.5);
+            padding: 5px 15px;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="scene"></canvas>
+    
+    <div id="overlay">
+        <div id="logo">🥭 <span>MANGUITOS</span> LIVE</div>
+        <div id="live-badge">● LIVE</div>
+        <div id="viewer-count">👁️ <span id="viewers">0</span> viewers</div>
+    </div>
+    
+    <div id="gift-alert">
+        <span class="gift-icon" id="gift-icon">🌹</span>
+        <span class="gift-name" id="gift-name">Rosa</span>
+        <span class="gift-user" id="gift-user">@usuario</span>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('scene');
+        const ctx = canvas.getContext('2d');
+        
+        let W, H;
+        let stars = [];
+        let particles = [];
+        let characterY = 0;
+        let characterTargetY = 0;
+        let characterVY = 0;
+        let time = 0;
+        
+        function resize() {
+            W = canvas.width = window.innerWidth;
+            H = canvas.height = window.innerHeight;
+            characterY = H * 0.6;
+            characterTargetY = characterY;
+        }
+        
+        window.addEventListener('resize', resize);
+        resize();
+        
+        // Crear estrellas
+        for (let i = 0; i < 200; i++) {
+            stars.push({
+                x: Math.random() * W,
+                y: Math.random() * H,
+                size: Math.random() * 2 + 0.5,
+                speed: Math.random() * 0.5 + 0.1,
+                twinkle: Math.random() * Math.PI * 2
+            });
+        }
+        
+        // Dibujar fondo espacial
+        function drawBackground() {
+            // Gradiente espacial
+            const grad = ctx.createLinearGradient(0, 0, 0, H);
+            grad.addColorStop(0, '#0a0015');
+            grad.addColorStop(0.5, '#1a0030');
+            grad.addColorStop(1, '#0a0020');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, W, H);
+            
+            // Nebulosa
+            const nebulaGrad = ctx.createRadialGradient(W*0.3, H*0.4, 0, W*0.3, H*0.4, W*0.4);
+            nebulaGrad.addColorStop(0, 'rgba(100, 0, 150, 0.15)');
+            nebulaGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+            ctx.fillStyle = nebulaGrad;
+            ctx.fillRect(0, 0, W, H);
+            
+            const nebulaGrad2 = ctx.createRadialGradient(W*0.7, H*0.6, 0, W*0.7, H*0.6, W*0.3);
+            nebulaGrad2.addColorStop(0, 'rgba(0, 50, 150, 0.1)');
+            nebulaGrad2.addColorStop(1, 'rgba(0, 0, 0, 0)');
+            ctx.fillStyle = nebulaGrad2;
+            ctx.fillRect(0, 0, W, H);
+        }
+        
+        // Dibujar estrellas
+        function drawStars() {
+            stars.forEach(star => {
+                star.twinkle += 0.02;
+                const alpha = 0.5 + Math.sin(star.twinkle) * 0.5;
+                ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+                ctx.beginPath();
+                ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+                ctx.fill();
+                
+                star.y += star.speed;
+                if (star.y > H) {
+                    star.y = 0;
+                    star.x = Math.random() * W;
+                }
+            });
+        }
+        
+        // Dibujar personaje (estilo cartoon sin cara visible)
+        function drawCharacter() {
+            const cx = W / 2;
+            const cy = characterY;
+            
+            // Sombra
+            ctx.fillStyle = 'rgba(0,0,0,0.3)';
+            ctx.beginPath();
+            ctx.ellipse(cx, cy + 80, 60, 15, 0, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Cuerpo (forma de mango/personaje)
+            const bodyGrad = ctx.createLinearGradient(cx - 50, cy - 80, cx + 50, cy + 60);
+            bodyGrad.addColorStop(0, '#ff9944');
+            bodyGrad.addColorStop(0.5, '#ff6b35');
+            bodyGrad.addColorStop(1, '#cc4400');
+            
+            ctx.fillStyle = bodyGrad;
+            ctx.beginPath();
+            ctx.moveTo(cx - 40, cy + 60);
+            ctx.quadraticCurveTo(cx - 60, cy, cx - 30, cy - 70);
+            ctx.quadraticCurveTo(cx, cy - 90, cx + 30, cy - 70);
+            ctx.quadraticCurveTo(cx + 60, cy, cx + 40, cy + 60);
+            ctx.closePath();
+            ctx.fill();
+            
+            // Brillo
+            ctx.fillStyle = 'rgba(255, 255, 200, 0.3)';
+            ctx.beginPath();
+            ctx.ellipse(cx - 15, cy - 30, 15, 25, -0.3, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Tallo
+            ctx.fillStyle = '#44aa22';
+            ctx.beginPath();
+            ctx.moveTo(cx - 5, cy - 75);
+            ctx.lineTo(cx + 5, cy - 75);
+            ctx.lineTo(cx + 10, cy - 100);
+            ctx.lineTo(cx - 5, cy - 95);
+            ctx.closePath();
+            ctx.fill();
+            
+            // Hoja
+            ctx.fillStyle = '#33aa11';
+            ctx.beginPath();
+            ctx.moveTo(cx + 5, cy - 90);
+            ctx.quadraticCurveTo(cx + 30, cy - 110, cx + 40, cy - 95);
+            ctx.quadraticCurveTo(cx + 25, cy - 85, cx + 5, cy - 90);
+            ctx.fill();
+            
+            // Ojos (máscara/visor)
+            ctx.fillStyle = '#222';
+            ctx.beginPath();
+            ctx.ellipse(cx - 15, cy - 40, 12, 8, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(cx + 15, cy - 40, 12, 8, 0, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Brillo en ojos
+            ctx.fillStyle = '#fff';
+            ctx.beginPath();
+            ctx.arc(cx - 18, cy - 43, 4, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(cx + 12, cy - 43, 4, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Boca (sonrisa)
+            ctx.strokeStyle = '#222';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(cx, cy - 20, 15, 0.2, Math.PI - 0.2);
+            ctx.stroke();
+            
+            // Brazos
+            const armWave = Math.sin(time * 3) * 10;
+            
+            // Brazo izquierdo
+            ctx.strokeStyle = '#ff6b35';
+            ctx.lineWidth = 12;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(cx - 45, cy - 10);
+            ctx.quadraticCurveTo(cx - 70, cy - 30 + armWave, cx - 60, cy - 50 + armWave);
+            ctx.stroke();
+            
+            // Mano izquierda
+            ctx.fillStyle = '#ff9944';
+            ctx.beginPath();
+            ctx.arc(cx - 60, cy - 50 + armWave, 8, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Brazo derecho
+            ctx.strokeStyle = '#ff6b35';
+            ctx.beginPath();
+            ctx.moveTo(cx + 45, cy - 10);
+            ctx.quadraticCurveTo(cx + 70, cy - 30 - armWave, cx + 60, cy - 50 - armWave);
+            ctx.stroke();
+            
+            // Mano derecha
+            ctx.fillStyle = '#ff9944';
+            ctx.beginPath();
+            ctx.arc(cx + 60, cy - 50 - armWave, 8, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Piernas
+            ctx.strokeStyle = '#cc4400';
+            ctx.lineWidth = 14;
+            ctx.beginPath();
+            ctx.moveTo(cx - 20, cy + 55);
+            ctx.lineTo(cx - 25, cy + 80);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(cx + 20, cy + 55);
+            ctx.lineTo(cx + 25, cy + 80);
+            ctx.stroke();
+            
+            // Zapatos
+            ctx.fillStyle = '#333';
+            ctx.beginPath();
+            ctx.ellipse(cx - 25, cy + 85, 12, 6, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(cx + 25, cy + 85, 12, 6, 0, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        
+        // Dibujar plataformas
+        function drawPlatforms() {
+            ctx.fillStyle = 'rgba(255, 107, 53, 0.2)';
+            ctx.strokeStyle = 'rgba(255, 107, 53, 0.5)';
+            ctx.lineWidth = 2;
+            
+            for (let i = 0; i < 5; i++) {
+                const px = W * 0.15 + i * W * 0.18;
+                const py = H * 0.75 + Math.sin(time * 0.5 + i) * 10;
+                
+                ctx.beginPath();
+                ctx.roundRect(px - 40, py, 80, 15, 7);
+                ctx.fill();
+                ctx.stroke();
+            }
+        }
+        
+        // Sistema de partículas para regalos
+        function spawnParticles(type) {
+            const cx = W / 2;
+            const cy = characterY;
+            const count = type === 'galaxy' ? 100 : type === 'rocket' ? 50 : 30;
+            
+            for (let i = 0; i < count; i++) {
+                particles.push({
+                    x: cx + (Math.random() - 0.5) * 100,
+                    y: cy + (Math.random() - 0.5) * 100,
+                    vx: (Math.random() - 0.5) * 8,
+                    vy: -Math.random() * 5 - 2,
+                    size: Math.random() * 6 + 2,
+                    life: 1,
+                    color: getParticleColor(type),
+                    type: type
+                });
+            }
+            
+            // Efecto especial para galaxia
+            if (type === 'galaxy') {
+                for (let i = 0; i < 20; i++) {
+                    const angle = (i / 20) * Math.PI * 2;
+                    particles.push({
+                        x: cx,
+                        y: cy,
+                        vx: Math.cos(angle) * 4,
+                        vy: Math.sin(angle) * 4,
+                        size: 4,
+                        life: 1,
+                        color: `hsl(${Math.random() * 360}, 100%, 70%)`,
+                        type: 'galaxy_ring'
+                    });
+                }
+            }
+        }
+        
+        function getParticleColor(type) {
+            const colors = {
+                rose: ['#ff0066', '#ff3399', '#ff66aa', '#ff99cc'],
+                galaxy: ['#9900ff', '#6600ff', '#cc66ff', '#ff66ff'],
+                rocket: ['#ff4400', '#ff6600', '#ff8800', '#ffaa00'],
+                diamond: ['#00ccff', '#66ddff', '#99eeff', '#ffffff']
+            };
+            const arr = colors[type] || colors.rose;
+            return arr[Math.floor(Math.random() * arr.length)];
+        }
+        
+        function updateParticles() {
+            particles = particles.filter(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += 0.1; // gravedad
+                p.life -= 0.015;
+                
+                if (p.life > 0) {
+                    ctx.globalAlpha = p.life;
+                    ctx.fillStyle = p.color;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.globalAlpha = 1;
+                    return true;
+                }
+                return false;
+            });
+        }
+        
+        // Animación de salto del personaje
+        function updateCharacter() {
+            // Física simple
+            characterVY += 0.5; // gravedad
+            characterY += characterVY;
+            
+            // Suelo
+            if (characterY >= characterTargetY) {
+                characterY = characterTargetY;
+                characterVY = 0;
+            }
+        }
+        
+        function jump() {
+            characterVY = -15;
+        }
+        
+        // Loop principal
+        function animate() {
+            time += 0.016;
+            
+            drawBackground();
+            drawStars();
+            drawPlatforms();
+            updateCharacter();
+            drawCharacter();
+            updateParticles();
+            
+            requestAnimationFrame(animate);
+        }
+        
+        animate();
+        
+        // Simular viewers
+        let viewerCount = 0;
+        setInterval(() => {
+            viewerCount += Math.floor(Math.random() * 10) - 3;
+            if (viewerCount < 0) viewerCount = 0;
+            document.getElementById('viewers').textContent = viewerCount;
+        }, 2000);
+        
+        // Función para recibir regalos (llamar desde fuera)
+        window.receiveGift = function(user, giftType, giftName) {
+            const icons = {
+                rose: '🌹',
+                galaxy: '🌌',
+                rocket: '🚀',
+                diamond: '💎'
+            };
+            
+            document.getElementById('gift-icon').textContent = icons[giftType] || '🎁';
+            document.getElementById('gift-name').textContent = giftName || giftType;
+            document.getElementById('gift-user').textContent = '@' + user;
+            
+            const alert = document.getElementById('gift-alert');
+            alert.classList.add('show');
+            
+            spawnParticles(giftType);
+            jump();
+            
+            setTimeout(() => {
+                alert.classList.remove('show');
+            }, 3000);
+        };
+        
+        // Demo: simular regalos cada cierto tiempo
+        setInterval(() => {
+            if (Math.random() > 0.6) {
+                const gifts = [
+                    { type: 'rose', name: 'Rosa', user: 'viewer_' + Math.floor(Math.random()*100) },
+                    { type: 'galaxy', name: 'Galaxia', user: 'viewer_' + Math.floor(Math.random()*100) },
+                    { type: 'rocket', name: 'Cohete', user: 'viewer_' + Math.floor(Math.random()*100) },
+                    { type: 'diamond', name: 'Diamante', user: 'viewer_' + Math.floor(Math.random()*100) }
+                ];
+                const gift = gifts[Math.floor(Math.random() * gifts.length)];
+                window.receiveGift(gift.user, gift.type, gift.name);
+            }
+        }, 5000);
+    </script>
+</body>
+</html>
